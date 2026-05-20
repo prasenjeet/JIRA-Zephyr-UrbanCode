@@ -1,0 +1,23 @@
+jira:
+  base_url: "https://your-org.atlassian.net"
+  project_key: "DEMO"
+  username: "${JIRA_USERNAME}"
+  api_token: "${JIRA_API_TOKEN}"
+
+confluence:
+  base_url: "https://your-org.atlassian.net/wiki"
+  space_key: "DEMO"
+  username: "${CONFLUENCE_USERNAME}"
+  api_token: "${CONFLUENCE_API_TOKEN}"
+
+zephyr:
+  base_url: "https://your-org.atlassian.net"
+  api_token: "${ZEPHYR_API_TOKEN}"
+  project_key: "DEMO"
+
+urbancode:
+  base_url: "https://your-urbancode-server:8443"
+  username: "${UCD_USERNAME}"
+  password: "${UCD_PASSWORD}"
+  application: "MyApp"
+  environment: "Production"
