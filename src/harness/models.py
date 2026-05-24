@@ -1,4 +1,4 @@
-"""UrbanCode Deploy data models using Python 3.10+ dataclasses."""
+"""Harness CD data models using Python 3.10+ dataclasses."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from enum import Enum
 from typing import Optional
 
 
-class DeploymentStatus(str, Enum):
-    """Possible statuses for a UrbanCode deployment request."""
+class ExecutionStatus(str, Enum):
+    """Possible statuses for a Harness pipeline execution."""
 
-    PENDING = "PENDING"
+    QUEUED = "QUEUED"
     RUNNING = "RUNNING"
-    SUCCEEDED = "SUCCEEDED"
+    SUCCESS = "SUCCESS"
     FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
+    ABORTED = "ABORTED"
     ROLLING_BACK = "ROLLING_BACK"
     ROLLED_BACK = "ROLLED_BACK"
 
@@ -26,56 +26,57 @@ class DeploymentStatus(str, Enum):
     def is_terminal(self) -> bool:
         """Return ``True`` if the status is a terminal (final) state."""
         return self in (
-            DeploymentStatus.SUCCEEDED,
-            DeploymentStatus.FAILED,
-            DeploymentStatus.CANCELLED,
-            DeploymentStatus.ROLLED_BACK,
+            ExecutionStatus.SUCCESS,
+            ExecutionStatus.FAILED,
+            ExecutionStatus.ABORTED,
+            ExecutionStatus.ROLLED_BACK,
         )
 
 
 @dataclass
-class ComponentVersion:
-    """Represents a specific version of a component."""
+class ServiceArtifact:
+    """Represents a specific artifact version for a service."""
 
-    component: str
-    version: str
+    service: str
+    artifact_tag: str
     description: str = ""
     created: Optional[datetime] = None
 
     def __repr__(self) -> str:
-        return f"ComponentVersion({self.component!r} @ {self.version!r})"
+        return f"ServiceArtifact({self.service!r} @ {self.artifact_tag!r})"
 
 
 @dataclass
-class Snapshot:
-    """Represents an UrbanCode application snapshot (a set of component versions)."""
+class ArtifactBundle:
+    """Represents a Harness artifact bundle — a pinned set of service artifact versions."""
 
     id: str
     name: str
-    application: str
+    project: str
+    pipeline_id: str
     environment: str
-    versions: list[ComponentVersion] = field(default_factory=list)
+    artifacts: list[ServiceArtifact] = field(default_factory=list)
     description: str = ""
     created: Optional[datetime] = None
     created_by: str = "automation"
 
     def __repr__(self) -> str:
         return (
-            f"Snapshot(id={self.id!r}, name={self.name!r}, "
-            f"app={self.application!r})"
+            f"ArtifactBundle(id={self.id!r}, name={self.name!r}, "
+            f"project={self.project!r})"
         )
 
 
 @dataclass
-class DeploymentRequest:
-    """Represents a deployment request submitted to UrbanCode Deploy."""
+class PipelineExecution:
+    """Represents a Harness CD pipeline execution."""
 
     id: str
-    application: str
+    project: str
+    pipeline_id: str
     environment: str
-    snapshot: Snapshot
-    process: str
-    status: DeploymentStatus
+    artifact_bundle: ArtifactBundle
+    status: ExecutionStatus
     submitted_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -84,14 +85,14 @@ class DeploymentRequest:
 
     def __repr__(self) -> str:
         return (
-            f"DeploymentRequest(id={self.id!r}, "
-            f"app={self.application!r}, env={self.environment!r}, "
+            f"PipelineExecution(id={self.id!r}, "
+            f"project={self.project!r}, env={self.environment!r}, "
             f"status={self.status!r})"
         )
 
     @property
     def duration_seconds(self) -> Optional[float]:
-        """Return the deployment duration in seconds, or ``None`` if not complete."""
+        """Return the execution duration in seconds, or ``None`` if not complete."""
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
         return None

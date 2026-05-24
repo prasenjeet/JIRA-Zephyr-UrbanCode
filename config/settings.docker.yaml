@@ -1,0 +1,36 @@
+# Docker-local settings — used when running against the docker-compose stack.
+# Pass explicitly to the pipeline with --config config/settings.docker.yaml,
+# or copy/symlink it over settings.yaml.
+#
+# All use_decoy values are false so calls hit the real local containers.
+# Credentials are read from the environment (set via .env / docker .env.docker).
+
+plane:
+  base_url: "http://localhost:${PLANE_PORT:-80}"
+  api_token: "${PLANE_API_TOKEN}"
+  workspace_slug: "${PLANE_WORKSPACE_SLUG:-my-workspace}"
+  project_id: "${PLANE_PROJECT_ID}"
+  use_decoy: false
+
+# Kiwi TCMS exposes an XML-RPC API at /xml-rpc/ and a REST-like API at /api/v1/
+kiwi:
+  base_url: "https://localhost:${KIWI_PORT:-8443}"
+  username: "${KIWI_USERNAME:-admin}"
+  api_key: "${KIWI_API_KEY}"
+  verify_ssl: false
+  use_decoy: false
+
+wikijs:
+  base_url: "http://localhost:${WIKIJS_PORT:-3000}"
+  api_key: "${WIKIJS_API_KEY}"
+  locale: "en"
+  use_decoy: false
+
+urbancode:
+  base_url: "https://localhost:${UCD_PORT:-8444}"
+  username: "${UCD_USERNAME:-admin}"
+  password: "${UCD_PASSWORD}"
+  application: "MyApp"
+  environment: "Production"
+  verify_ssl: false
+  use_decoy: false

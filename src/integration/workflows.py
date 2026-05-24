@@ -4,204 +4,209 @@ from __future__ import annotations
 
 from typing import Optional
 
-from src.confluence.client import ConfluenceClient
-from src.jira.client import JiraClient
-from src.jira.models import Issue
-from src.urbancode.client import UrbanCodeClient
-from src.urbancode.models import DeploymentStatus
-from src.zephyr.client import ZephyrClient
-from src.zephyr.models import TestStatus
+from src.wikijs.client import WikiJsClient
+from src.plane.client import PlaneClient
+from src.plane.models import Issue
+from src.kiwi.client import KiwiTCMSClient
+from src.kiwi.models import TestStatus
+from src.harness.client import HarnessClient
+from src.harness.models import ExecutionStatus
 
 
-def sync_jira_to_confluence(
-    jira_client: JiraClient,
-    confluence_client: ConfluenceClient,
-    project_key: Optional[str] = None,
-    statuses: Optional[list[str]] = None,
+def sync_plane_to_wikijs(
+    plane_client: PlaneClient,
+    wikijs_client: WikiJsClient,
+    states: Optional[list[str]] = None,
 ) -> list:
-    """Create or update Confluence pages for JIRA issues.
+    """Create or update Wiki.js pages for Plane issues.
 
-    Fetches issues by status and creates one Confluence page per issue,
-    containing issue metadata formatted as an HTML table.
+    Fetches issues by state and creates one Wiki.js page per issue,
+    containing issue metadata formatted as a Markdown table.
 
     Args:
-        jira_client: Connected :class:`JiraClient`.
-        confluence_client: Connected :class:`ConfluenceClient`.
-        project_key: JIRA project key to filter issues.
-        statuses: List of JIRA statuses to include. Defaults to all open statuses.
+        plane_client: Connected :class:`PlaneClient`.
+        wikijs_client: Connected :class:`WikiJsClient`.
+        states: List of Plane states to include. Defaults to all open states.
 
     Returns:
-        List of created/updated :class:`~src.confluence.models.Page` objects.
+        List of created :class:`~src.wikijs.models.WikiPage` objects.
     """
-    target_statuses = statuses or ["Open", "In Dev", "Ready for QA", "In QA"]
+    target_states = states or ["Open", "In Dev", "Ready for QA", "In QA"]
     pages = []
 
-    print("[WORKFLOW] sync_jira_to_confluence — starting")
+    print("[WORKFLOW] sync_plane_to_wikijs — starting")
 
-    for status in target_statuses:
-        issues = jira_client.get_issues_by_status(status)
+    for state in target_states:
+        issues = plane_client.get_issues_by_state(state)
         for issue in issues:
-            content = _issue_to_html(issue)
-            title = f"[{issue.key}] {issue.summary}"
-            page = confluence_client.create_page(
+            content = _issue_to_markdown(issue)
+            title = f"[{issue.key}] {issue.name}"
+            page = wikijs_client.create_page(
                 title=title,
                 content=content,
-                labels=["jira-sync", issue.status.lower().replace(" ", "-")],
+                path=f"plane/{issue.key.lower()}",
+                tags=["plane-sync", issue.state.lower().replace(" ", "-")],
             )
-            print(f"[WORKFLOW]   -> Synced {issue.key} → Confluence page {page.id}")
+            print(f"[WORKFLOW]   -> Synced {issue.key} → Wiki.js page {page.id}")
             pages.append(page)
 
-    print(f"[WORKFLOW] sync_jira_to_confluence — created {len(pages)} page(s)")
+    print(f"[WORKFLOW] sync_plane_to_wikijs — created {len(pages)} page(s)")
     return pages
 
 
 def deploy_on_test_pass(
-    zephyr_client: ZephyrClient,
-    urbancode_client: UrbanCodeClient,
-    cycle_id: str,
-    app_name: Optional[str] = None,
+    kiwi_client: KiwiTCMSClient,
+    harness_client: HarnessClient,
+    run_id: str,
+    project: Optional[str] = None,
     environment: str = "Production",
-    snapshot_name: Optional[str] = None,
+    bundle_name: Optional[str] = None,
 ) -> dict:
-    """Trigger a UrbanCode Deploy deployment only if all Zephyr tests pass.
+    """Trigger a Harness CD pipeline execution only if all Kiwi TCMS tests pass.
 
     Args:
-        zephyr_client: Connected :class:`ZephyrClient`.
-        urbancode_client: Connected :class:`UrbanCodeClient`.
-        cycle_id: Zephyr test cycle to evaluate.
-        app_name: Application name override.
+        kiwi_client: Connected :class:`KiwiTCMSClient`.
+        harness_client: Connected :class:`HarnessClient`.
+        run_id: Kiwi TCMS test run to evaluate.
+        project: Harness project identifier override.
         environment: Deployment target environment.
-        snapshot_name: Snapshot name override (defaults to ``"auto-<cycle_id>"``).
+        bundle_name: Artifact bundle name override (defaults to ``"auto-<run_id>"``).
 
     Returns:
-        Dict with keys: ``cycle_summary``, ``deployed``, ``deployment`` (or ``None``).
+        Dict with keys: ``run_summary``, ``deployed``, ``deployment`` (or ``None``).
     """
-    print(f"[WORKFLOW] deploy_on_test_pass — evaluating cycle {cycle_id!r}")
+    print(f"[WORKFLOW] deploy_on_test_pass — evaluating run {run_id!r}")
 
-    summary = zephyr_client.get_cycle_summary(cycle_id)
+    summary = kiwi_client.get_run_summary(run_id)
     print(
-        f"[WORKFLOW]   Cycle results: {summary['passed']}/{summary['total']} passed"
+        f"[WORKFLOW]   Run results: {summary['passed']}/{summary['total']} passed"
     )
 
     if not summary["all_passed"]:
         print(
             f"[WORKFLOW]   {summary['failed']} test(s) failed — deployment SKIPPED"
         )
-        return {"cycle_summary": summary, "deployed": False, "deployment": None}
+        return {"run_summary": summary, "deployed": False, "deployment": None}
 
-    print("[WORKFLOW]   All tests passed — proceeding with deployment")
-    resolved_app = app_name or urbancode_client.application
-    snap = urbancode_client.create_snapshot(
-        application=resolved_app,
+    print("[WORKFLOW]   All tests passed — proceeding with Harness deployment")
+    resolved_project = project or harness_client.project
+    bundle = harness_client.create_artifact_bundle(
+        project=resolved_project,
         environment=environment,
-        name=snapshot_name or f"auto-{cycle_id}",
+        name=bundle_name or f"auto-{run_id}",
     )
-    deployment = urbancode_client.request_deployment(
-        application=resolved_app,
-        snapshot=snap,
+    deployment = harness_client.execute_pipeline(
+        project=resolved_project,
+        artifact_bundle=bundle,
         environment=environment,
     )
-    final_status = urbancode_client.wait_for_deployment(request_id=deployment.id)
+    final_status = harness_client.wait_for_execution(execution_id=deployment.id)
 
-    success = final_status == DeploymentStatus.SUCCEEDED
+    success = final_status == ExecutionStatus.SUCCESS
     print(
-        f"[WORKFLOW]   Deployment {deployment.id}: "
+        f"[WORKFLOW]   Execution {deployment.id}: "
         f"{'SUCCEEDED' if success else 'FAILED'}"
     )
     return {
-        "cycle_summary": summary,
+        "run_summary": summary,
         "deployed": success,
         "deployment": deployment,
     }
 
 
 def generate_release_notes(
-    jira_client: JiraClient,
-    confluence_client: ConfluenceClient,
+    plane_client: PlaneClient,
+    wikijs_client: WikiJsClient,
     fix_version: str,
-    space_key: Optional[str] = None,
+    locale: Optional[str] = None,
 ) -> object:
-    """Auto-generate a release notes Confluence page for a JIRA fix version.
+    """Auto-generate a release notes Wiki.js page for a Plane fix version.
 
-    Collects all issues tagged with ``fix_version`` from the Deployed status
-    and formats them into a structured release notes page.
+    Collects all issues in the Deployed state tagged with ``fix_version``
+    and formats them into a structured Markdown release notes page.
 
     Args:
-        jira_client: Connected :class:`JiraClient`.
-        confluence_client: Connected :class:`ConfluenceClient`.
+        plane_client: Connected :class:`PlaneClient`.
+        wikijs_client: Connected :class:`WikiJsClient`.
         fix_version: Version string to collect issues for (e.g. ``"1.4.0"``).
-        space_key: Target Confluence space.
+        locale: Target Wiki.js locale.
 
     Returns:
-        Created :class:`~src.confluence.models.Page`.
+        Created :class:`~src.wikijs.models.WikiPage`.
     """
     print(f"[WORKFLOW] generate_release_notes — version {fix_version!r}")
 
-    deployed_issues = jira_client.get_issues_by_status("Deployed")
+    deployed_issues = plane_client.get_issues_by_state("Deployed")
     version_issues = [i for i in deployed_issues if i.fix_version == fix_version]
 
-    # If none match fix_version, use all deployed as a demo fallback
     if not version_issues:
         version_issues = deployed_issues
         print("[WORKFLOW]   No exact version match; using all Deployed issues as demo")
 
-    html = _release_notes_html(fix_version, version_issues)
+    md = _release_notes_markdown(fix_version, version_issues)
     title = f"Release Notes — v{fix_version}"
 
-    page = confluence_client.create_page(
+    page = wikijs_client.create_page(
         title=title,
-        content=html,
-        space_key=space_key,
-        labels=["release-notes", f"v{fix_version}"],
+        content=md,
+        path=f"releases/v{fix_version}",
+        locale=locale,
+        description=f"Release notes for version {fix_version}",
+        tags=["release-notes", f"v{fix_version}"],
     )
     print(f"[WORKFLOW]   Release notes created: {page.url}")
     return page
 
 
 # ---------------------------------------------------------------------------
-# Internal HTML helpers
+# Internal Markdown helpers
 # ---------------------------------------------------------------------------
 
-def _issue_to_html(issue: Issue) -> str:
+def _issue_to_markdown(issue: Issue) -> str:
     labels_str = ", ".join(issue.labels) if issue.labels else "—"
-    cycles_str = ", ".join(issue.linked_cycles) if issue.linked_cycles else "—"
-    return f"""<h1>[{issue.key}] {issue.summary}</h1>
-<table>
-  <tr><th>Field</th><th>Value</th></tr>
-  <tr><td>Key</td><td>{issue.key}</td></tr>
-  <tr><td>Status</td><td>{issue.status}</td></tr>
-  <tr><td>Type</td><td>{issue.issue_type}</td></tr>
-  <tr><td>Priority</td><td>{issue.priority}</td></tr>
-  <tr><td>Assignee</td><td>{issue.assignee or '—'}</td></tr>
-  <tr><td>Reporter</td><td>{issue.reporter}</td></tr>
-  <tr><td>Labels</td><td>{labels_str}</td></tr>
-  <tr><td>Linked Cycles</td><td>{cycles_str}</td></tr>
-  <tr><td>Created</td><td>{issue.created.strftime('%Y-%m-%d %H:%M UTC')}</td></tr>
-</table>
-<h2>Description</h2>
-<p>{issue.description or 'No description provided.'}</p>
+    runs_str = ", ".join(issue.linked_runs) if issue.linked_runs else "—"
+    return f"""# [{issue.key}] {issue.name}
+
+| Field | Value |
+|-------|-------|
+| Key | {issue.key} |
+| State | {issue.state} |
+| Type | {issue.issue_type} |
+| Priority | {issue.priority} |
+| Assignee | {issue.assignee or '—'} |
+| Created By | {issue.created_by} |
+| Labels | {labels_str} |
+| Linked Test Runs | {runs_str} |
+| Created | {issue.created_at.strftime('%Y-%m-%d %H:%M UTC')} |
+
+## Description
+
+{issue.description or 'No description provided.'}
 """
 
 
-def _release_notes_html(version: str, issues: list) -> str:
+def _release_notes_markdown(version: str, issues: list) -> str:
+    import datetime
     rows = "".join(
-        f"<tr><td>{i.key}</td><td>{i.summary}</td>"
-        f"<td>{i.issue_type}</td><td>{i.priority}</td></tr>\n"
+        f"| {i.key} | {i.name} | {i.issue_type} | {i.priority} |\n"
         for i in issues
     )
-    return f"""<h1>Release Notes — v{version}</h1>
-<p><strong>Release Date:</strong> {__import__('datetime').datetime.utcnow().strftime('%Y-%m-%d')}</p>
-<p><strong>Issues resolved:</strong> {len(issues)}</p>
+    return f"""# Release Notes — v{version}
 
-<h2>Changes</h2>
-<table>
-  <tr><th>Issue</th><th>Summary</th><th>Type</th><th>Priority</th></tr>
-  {rows}
-</table>
+**Release Date:** {datetime.datetime.utcnow().strftime('%Y-%m-%d')}
+**Issues resolved:** {len(issues)}
 
-<h2>Upgrade Notes</h2>
-<p>No special upgrade steps required for this release.</p>
+## Changes
 
-<h2>Known Issues</h2>
-<p>See the <a href="#">JIRA backlog</a> for open issues.</p>
+| Issue | Summary | Type | Priority |
+|-------|---------|------|----------|
+{rows}
+
+## Upgrade Notes
+
+No special upgrade steps required for this release.
+
+## Known Issues
+
+See the Plane backlog for open issues.
 """

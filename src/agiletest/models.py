@@ -1,4 +1,4 @@
-"""Zephyr Scale data models using Python 3.10+ dataclasses."""
+"""AgileTest data models using Python 3.10+ dataclasses."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from typing import Optional
 
 
 class TestStatus(str, Enum):
-    """Possible execution statuses for a test case."""
+    """Possible execution statuses for an AgileTest test execution."""
 
     PASS = "PASS"
     FAIL = "FAIL"
     BLOCKED = "BLOCKED"
-    NOT_EXECUTED = "NOT_EXECUTED"
+    UNEXECUTED = "UNEXECUTED"
     IN_PROGRESS = "IN_PROGRESS"
 
     def __str__(self) -> str:  # noqa: D105
@@ -23,7 +23,7 @@ class TestStatus(str, Enum):
 
 @dataclass
 class TestCase:
-    """Represents a single Zephyr test case definition."""
+    """Represents a single AgileTest test case (backed by a JIRA issue of type Test)."""
 
     key: str
     name: str
@@ -40,14 +40,14 @@ class TestCase:
 
 
 @dataclass
-class TestResult:
-    """Represents the execution result of a single test case within a cycle."""
+class TestExecution:
+    """Represents the execution result of a single test case within a test plan."""
 
     id: str
     test_case_key: str
     test_name: str
     status: TestStatus
-    cycle_id: str
+    plan_id: str
     comment: str = ""
     executed_by: str = "automation"
     executed_at: Optional[datetime] = None
@@ -55,7 +55,7 @@ class TestResult:
 
     def __repr__(self) -> str:
         return (
-            f"TestResult(test_case_key={self.test_case_key!r}, "
+            f"TestExecution(test_case_key={self.test_case_key!r}, "
             f"status={self.status!r})"
         )
 
@@ -73,8 +73,8 @@ class TestResult:
 
 
 @dataclass
-class TestCycle:
-    """Represents a Zephyr test cycle (a collection of test executions)."""
+class TestPlan:
+    """Represents an AgileTest test plan — a collection of test cases to be executed."""
 
     id: str
     name: str
@@ -82,7 +82,7 @@ class TestCycle:
     version: str
     jira_issue_keys: list[str] = field(default_factory=list)
     test_case_keys: list[str] = field(default_factory=list)
-    results: list[TestResult] = field(default_factory=list)
+    executions: list[TestExecution] = field(default_factory=list)
     status: str = "Active"
     created: Optional[datetime] = None
     updated: Optional[datetime] = None
@@ -90,24 +90,24 @@ class TestCycle:
 
     def __repr__(self) -> str:
         return (
-            f"TestCycle(id={self.id!r}, name={self.name!r}, "
+            f"TestPlan(id={self.id!r}, name={self.name!r}, "
             f"status={self.status!r})"
         )
 
     @property
     def pass_count(self) -> int:
-        """Number of passing test results in this cycle."""
-        return sum(1 for r in self.results if r.status == TestStatus.PASS)
+        """Number of passing executions in this plan."""
+        return sum(1 for e in self.executions if e.status == TestStatus.PASS)
 
     @property
     def fail_count(self) -> int:
-        """Number of failing test results in this cycle."""
-        return sum(1 for r in self.results if r.status == TestStatus.FAIL)
+        """Number of failing executions in this plan."""
+        return sum(1 for e in self.executions if e.status == TestStatus.FAIL)
 
     @property
     def total_count(self) -> int:
-        """Total number of executed test results."""
-        return len(self.results)
+        """Total number of recorded executions."""
+        return len(self.executions)
 
     @property
     def pass_rate(self) -> float:
