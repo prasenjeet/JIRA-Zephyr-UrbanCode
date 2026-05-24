@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from src.confluence.client import ConfluenceClient
-from src.jira.client import JiraClient
+from src.confluence.base import BaseConfluenceClient
+from src.jira.base import BaseJiraClient
 from src.jira.models import Issue
-from src.urbancode.client import UrbanCodeClient
+from src.urbancode.base import BaseUrbanCodeClient
 from src.urbancode.models import DeploymentRequest, DeploymentStatus
-from src.zephyr.client import ZephyrClient
+from src.zephyr.base import BaseZephyrClient
 from src.zephyr.models import TestCycle, TestStatus
 
 
@@ -31,25 +31,25 @@ class IntegrationPipeline:
 
     1. Fetch JIRA issue and transition it to "In QA".
     2. Create a Zephyr test cycle linked to the issue.
-    3. Execute the test suite (via the Zephyr decoy runner).
+    3. Execute the test suite (via the Zephyr runner).
     4. Publish a Confluence test report page.
     5a. If all tests pass  → trigger UrbanCode deployment → mark JIRA "Deployed".
     5b. If any tests fail  → comment on JIRA issue → revert status to "In Dev".
 
     Args:
-        jira: :class:`JiraClient` instance.
-        confluence: :class:`ConfluenceClient` instance.
-        zephyr: :class:`ZephyrClient` instance.
-        urbancode: :class:`UrbanCodeClient` instance.
+        jira: :class:`BaseJiraClient` instance.
+        confluence: :class:`BaseConfluenceClient` instance.
+        zephyr: :class:`BaseZephyrClient` instance.
+        urbancode: :class:`BaseUrbanCodeClient` instance.
         version: Software version under test (used in cycle names / snapshots).
     """
 
     def __init__(
         self,
-        jira: JiraClient,
-        confluence: ConfluenceClient,
-        zephyr: ZephyrClient,
-        urbancode: UrbanCodeClient,
+        jira: BaseJiraClient,
+        confluence: BaseConfluenceClient,
+        zephyr: BaseZephyrClient,
+        urbancode: BaseUrbanCodeClient,
         version: str = "1.0.0",
     ) -> None:
         self.jira = jira
@@ -116,7 +116,7 @@ class IntegrationPipeline:
         # Step 3: Execute test suite                                           #
         # ------------------------------------------------------------------ #
         _divider("Step 3 — Executing test suite")
-        results = self.zephyr.run_all_tests_decoy(
+        results = self.zephyr.run_test_suite(
             cycle_id=cycle.id,
             pass_rate=pass_rate,
         )
